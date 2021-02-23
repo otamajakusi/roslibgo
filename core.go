@@ -33,19 +33,12 @@ type Topic struct {
 	isAdvertized bool
 }
 
-type Service struct {
-	ros          *Ros
-	name         string
-	serviceType  string
-	isAdvertized bool
-}
-
 type Base struct {
 	Op string `json:"op"`
 	Id string `json:"id"`
 }
 
-// https://github.com/RobotWebTools/rosbridge_suite/blob/groovy-devel/ROSBRIDGE_PROTOCOL.md#343-publish--publish-
+// https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#343-publish--publish-
 type PublishMessage struct {
 	Op    string          `json:"op"`
 	Id    string          `json:"id,omitempty"`
@@ -53,7 +46,7 @@ type PublishMessage struct {
 	Msg   json.RawMessage `json:"msg,omitempty"`
 }
 
-// https://github.com/RobotWebTools/rosbridge_suite/blob/groovy-devel/ROSBRIDGE_PROTOCOL.md#344-subscribe
+// https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#344-subscribe
 type SubscribeMessage struct {
 	Op           string `json:"op"`
 	Id           string `json:"id,omitempty"`
@@ -72,7 +65,7 @@ func (rosWs *RosWs) readMessage() ([]byte, error) {
 	return msg, err
 }
 
-func (rosWs *RosWs) writeJSON(msg interface{}, tmpData string) error {
+func (rosWs *RosWs) writeJSON(msg interface{}) error {
 	rosWs.mutex.Lock()
 	err := rosWs.ws.WriteJSON(msg)
 	rosWs.mutex.Unlock()
@@ -103,7 +96,7 @@ func (ros *Ros) RunForever() {
 		}
 		var base Base
 		json.Unmarshal(msg, &base)
-		//fmt.Println("readdata unmarshal", string(msg))
+		fmt.Println("readdata unmarshal", string(msg))
 		switch base.Op {
 		case "publish":
 			var message PublishMessage
@@ -112,6 +105,9 @@ func (ros *Ros) RunForever() {
 		case "subscribe":
 		case "unsubscribe":
 		case "call_service":
+			var service ServiceCall
+			json.Unmarshal(msg, &service)
+			ros.storeMessage(service.Service, &service)
 		case "service_response":
 		default:
 		}
@@ -165,9 +161,9 @@ func (topic *Topic) Publish(data json.RawMessage) {
 	ros := topic.ros
 	id := fmt.Sprintf("publish:%s:%d", topic.name, ros.incCounter())
 	msg := PublishMessage{Op: "publish", Id: id, Topic: topic.name, Msg: data}
-	err := ros.ws.writeJSON(msg, string(data))
+	err := ros.ws.writeJSON(msg)
 	if err != nil {
-		fmt.Printf("PUblish: error %v\n", err)
+		fmt.Printf("Publish: error %v\n", err)
 	}
 }
 
@@ -177,7 +173,7 @@ func (topic *Topic) Subscribe(callback TopicCallback) {
 
 	id := fmt.Sprintf("subscribe:%s:%d", topic.name, ros.incCounter())
 	msg := SubscribeMessage{Op: "subscribe", Id: id, Topic: topic.name, Type: topic.messageType}
-	err := ros.ws.writeJSON(msg, "")
+	err := ros.ws.writeJSON(msg)
 	if err != nil {
 		fmt.Printf("Subscribe: error %v\n", err)
 	}
@@ -189,18 +185,4 @@ func (topic *Topic) Subscribe(callback TopicCallback) {
 }
 
 func (topic *Topic) Unsubscribe() {
-}
-
-func NewService(ros *Ros, name string, serviceType string) *Service {
-	service := Service{ros: ros, name: name, serviceType: serviceType, isAdvertized: false}
-	return &service
-}
-
-func (service *Service) Call() {
-}
-
-func (service *Service) Advertize() {
-}
-
-func (service *Service) Unadvertize() {
 }
