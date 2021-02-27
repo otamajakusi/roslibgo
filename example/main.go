@@ -4,6 +4,8 @@ import (
 	"../../roslibgo"
 	"encoding/json"
 	"fmt"
+	//"github.com/pkg/profile"
+	"sync"
 	"time"
 )
 
@@ -42,22 +44,28 @@ func serviceCallback(request json.RawMessage) (bool, json.RawMessage) {
 }
 
 func main() {
+	//defer profile.Start(profile.MemProfile, profile.ProfilePath(".")).Stop()
+	var wg sync.WaitGroup
+
 	ros, _ := roslibgo.NewRos("ws://localhost:9090")
 	ros.Run()
 
-	srv := roslibgo.NewService(ros, "/x", "std_srvs/SetBool")
-	call := roslibgo.NewService(ros, "/x", "std_srvs/SetBool")
-	srv.Advertise(serviceCallback)
-	data, _ := json.Marshal(StdSrvs_SetBoolRequest{Data: true})
-	callLoop := func() {
-		for {
-			resp := call.Call(json.RawMessage(data))
-			fmt.Println("callback:", string(resp))
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-	go callLoop()
-	select {}
+	// srv := roslibgo.NewService(ros, "/x", "std_srvs/SetBool")
+	// call := roslibgo.NewService(ros, "/x", "std_srvs/SetBool")
+	// srv.Advertise(serviceCallback)
+	// data, _ := json.Marshal(StdSrvs_SetBoolRequest{Data: true})
+	// callLoop := func() {
+	// 	for i := 0; i < 10; i++ {
+	// 		resp, err := call.Call(json.RawMessage(data))
+	// 		if err != nil {
+	// 			fmt.Println("error:", err)
+	// 			break
+	// 		}
+	// 		fmt.Println("callback:", string(resp))
+	// 		time.Sleep(10 * time.Millisecond)
+	// 	}
+	// }
+	// go callLoop()
 
 	suba := roslibgo.NewTopic(ros, "/a", "std_msgs/String")
 	suba.Subscribe(callbackA)
@@ -65,21 +73,23 @@ func main() {
 	subb.Subscribe(callbackB)
 
 	pubLoop := func(name string, str string) func() {
-		i := 0
 		pub := roslibgo.NewTopic(ros, name, "std_msgs/String")
 		return func() {
-			for {
+			for i := 0; ; i++ {
 				//fmt.Printf("--- %s: %d\n", str, i)
 				s, _ := json.Marshal(StdMsgs_String{Data: fmt.Sprintf("%s: %d", str, i)})
-				i++
 				pub.Publish(json.RawMessage(s))
-				time.Sleep(10 * time.Millisecond)
+				//_, _ = pub, s
+				time.Sleep(1 * time.Millisecond)
 			}
+			wg.Done()
 		}
 	}
 	a := pubLoop("/a", "hoge")
 	b := pubLoop("/b", "fuga")
+	wg.Add(1)
 	go a()
+	wg.Add(1)
 	go b()
-	select {}
+	wg.Wait()
 }

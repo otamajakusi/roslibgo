@@ -59,53 +59,55 @@ func NewService(ros *Ros, name string, serviceType string) *Service {
 	return &service
 }
 
-func (service *Service) Call(request json.RawMessage) json.RawMessage {
-	service.call(request)
+func (service *Service) Call(request json.RawMessage) (json.RawMessage, error) {
+	err := service.call(request)
+	if err != nil {
+		return nil, err
+	}
 	ros := service.ros
 	ros.createMessage(ServiceResponseOp, service.name)
 	defer ros.destroyMessage(ServiceResponseOp, service.name)
-	return ros.retrieveMessage(ServiceResponseOp, service.name).(*ServiceResponse).Values
+	return ros.retrieveMessage(ServiceResponseOp, service.name).(*ServiceResponse).Values, nil
 }
 
-func (service *Service) Advertise(callback ServiceCallback) {
-	service.advertise()
-
-	ros := service.ros
-	ros.createMessage(ServiceCallOp, service.name)
+func (service *Service) Advertise(callback ServiceCallback) error {
+	err := service.advertise()
+	if err != nil {
+		return err
+	}
 
 	go func() {
+		ros := service.ros
+		ros.createMessage(ServiceCallOp, service.name)
+		defer ros.destroyMessage(ServiceCallOp, service.name)
+
 		for {
 			srvCall := ros.retrieveMessage(ServiceCallOp, service.name)
 			result, values := callback(srvCall.(*ServiceCall).Args)
 			id := srvCall.(*ServiceCall).Id
 			srvResp := ServiceResponse{Op: ServiceResponseOp, Id: id, Service: service.name, Values: values, Result: result}
-			ros.ws.writeJSON(srvResp)
+			err := ros.ws.writeJSON(srvResp)
+			if err != nil {
+				return // FIXME
+			}
 		}
 	}()
+	return nil
 }
 
-func (service *Service) Unadvertise() {
+func (service *Service) Unadvertise() error {
 	srv := ServiceAdvertise{Op: ServiceUnadvertiseOp, Service: service.name}
-	err := service.ros.ws.writeJSON(srv)
-	if err != nil {
-		fmt.Printf("Unadvertise: error %v\n", err)
-	}
+	return service.ros.ws.writeJSON(srv)
 }
 
-func (service *Service) call(request json.RawMessage) {
+func (service *Service) call(request json.RawMessage) error {
 	ros := service.ros
 	id := fmt.Sprintf("ServiceCallOp:%s:%d", service.name, ros.incCounter())
 	srv := ServiceCall{Op: ServiceCallOp, Id: id, Service: service.name, Args: request}
-	err := service.ros.ws.writeJSON(srv)
-	if err != nil {
-		fmt.Printf("Call: error %v\n", err)
-	}
+	return service.ros.ws.writeJSON(srv)
 }
 
-func (service *Service) advertise() {
+func (service *Service) advertise() error {
 	srv := ServiceAdvertise{Op: ServiceAdvertiseOp, Type: service.serviceType, Service: service.name}
-	err := service.ros.ws.writeJSON(srv)
-	if err != nil {
-		fmt.Printf("Advertise: error %v\n", err)
-	}
+	return service.ros.ws.writeJSON(srv)
 }
