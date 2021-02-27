@@ -36,11 +36,8 @@ func callbackB(data json.RawMessage) {
 func serviceCallback(request json.RawMessage) (bool, json.RawMessage) {
 	var req StdSrvs_SetBoolRequest
 	json.Unmarshal(request, &req)
-	fmt.Println(req)
 	res := StdSrvs_SetBoolResponse{Success: true, Message: "I'm OK"}
 	raw, _ := json.Marshal(res)
-	fmt.Println("raw:", raw)
-
 	return true, raw
 }
 
@@ -49,7 +46,17 @@ func main() {
 	ros.Run()
 
 	srv := roslibgo.NewService(ros, "/x", "std_srvs/SetBool")
+	call := roslibgo.NewService(ros, "/x", "std_srvs/SetBool")
 	srv.Advertise(serviceCallback)
+	data, _ := json.Marshal(StdSrvs_SetBoolRequest{Data: true})
+	callLoop := func() {
+		for {
+			resp := call.Call(json.RawMessage(data))
+			fmt.Println("callback:", string(resp))
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	go callLoop()
 	select {}
 
 	suba := roslibgo.NewTopic(ros, "/a", "std_msgs/String")

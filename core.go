@@ -39,6 +39,8 @@ type Base struct {
 }
 
 // https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#343-publish--publish-
+const PublishOp = "publish"
+
 type PublishMessage struct {
 	Op    string          `json:"op"`
 	Id    string          `json:"id,omitempty"`
@@ -47,6 +49,8 @@ type PublishMessage struct {
 }
 
 // https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#344-subscribe
+const SubscribeOp = "subscribe"
+
 type SubscribeMessage struct {
 	Op           string `json:"op"`
 	Id           string `json:"id,omitempty"`
@@ -96,19 +100,22 @@ func (ros *Ros) RunForever() {
 		}
 		var base Base
 		json.Unmarshal(msg, &base)
-		fmt.Println("readdata unmarshal", string(msg))
+		// fmt.Println(string(msg))
 		switch base.Op {
 		case "publish":
 			var message PublishMessage
 			json.Unmarshal(msg, &message)
-			ros.storeMessage(message.Topic, &message)
+			ros.storeMessage(PublishOp, message.Topic, &message)
 		case "subscribe":
 		case "unsubscribe":
 		case "call_service":
 			var service ServiceCall
 			json.Unmarshal(msg, &service)
-			ros.storeMessage(service.Service, &service)
+			ros.storeMessage(ServiceCallOp, service.Service, &service)
 		case "service_response":
+			var service ServiceResponse
+			json.Unmarshal(msg, &service)
+			ros.storeMessage(ServiceResponseOp, service.Service, &service)
 		default:
 		}
 	}
@@ -135,21 +142,27 @@ func (ros *Ros) incCounter() int {
 	return counter
 }
 
-func (ros *Ros) initializeMessage(key string) {
+func (ros *Ros) createMessage(op string, name string) {
 	ch := make(chan interface{})
 	ros.message.mutex.Lock()
-	ros.message.message[key] = ch
+	ros.message.message[op+":"+name] = ch
 	ros.message.mutex.Unlock()
 }
 
-func (ros *Ros) storeMessage(key string, value interface{}) {
+func (ros *Ros) destroyMessage(op string, name string) {
 	ros.message.mutex.Lock()
-	ros.message.message[key] <- value
+	ros.message.message[op+":"+name] = nil
 	ros.message.mutex.Unlock()
 }
 
-func (ros *Ros) loadMessage(key string) interface{} {
-	return <-ros.message.message[key]
+func (ros *Ros) storeMessage(op string, name string, value interface{}) {
+	ros.message.mutex.Lock()
+	ros.message.message[op+":"+name] <- value
+	ros.message.mutex.Unlock()
+}
+
+func (ros *Ros) retrieveMessage(op string, name string) interface{} {
+	return <-ros.message.message[op+":"+name]
 }
 
 func NewTopic(ros *Ros, name string, messageType string) *Topic {
@@ -159,7 +172,7 @@ func NewTopic(ros *Ros, name string, messageType string) *Topic {
 
 func (topic *Topic) Publish(data json.RawMessage) {
 	ros := topic.ros
-	id := fmt.Sprintf("publish:%s:%d", topic.name, ros.incCounter())
+	id := fmt.Sprintf("%s:%s:%d", PublishOp, topic.name, ros.incCounter())
 	msg := PublishMessage{Op: "publish", Id: id, Topic: topic.name, Msg: data}
 	err := ros.ws.writeJSON(msg)
 	if err != nil {
@@ -169,9 +182,9 @@ func (topic *Topic) Publish(data json.RawMessage) {
 
 func (topic *Topic) Subscribe(callback TopicCallback) {
 	ros := topic.ros
-	ros.initializeMessage(topic.name)
+	ros.createMessage(SubscribeOp, topic.name)
 
-	id := fmt.Sprintf("subscribe:%s:%d", topic.name, ros.incCounter())
+	id := fmt.Sprintf("%s:%s:%d", SubscribeOp, topic.name, ros.incCounter())
 	msg := SubscribeMessage{Op: "subscribe", Id: id, Topic: topic.name, Type: topic.messageType}
 	err := ros.ws.writeJSON(msg)
 	if err != nil {
@@ -179,7 +192,7 @@ func (topic *Topic) Subscribe(callback TopicCallback) {
 	}
 	go func() {
 		for {
-			callback((ros.loadMessage(topic.name)).(*PublishMessage).Msg)
+			callback((ros.retrieveMessage(SubscribeOp, topic.name)).(*PublishMessage).Msg)
 		}
 	}()
 }
