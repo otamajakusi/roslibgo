@@ -66,11 +66,10 @@ func (ros *Ros) Run() {
 }
 
 func (ros *Ros) RunForever() {
-	recv := func() {
+	recv := func() error {
 		msg, err := ros.ws.readMessage()
 		if err != nil {
-			fmt.Printf("RunForever: error %v\n", err)
-			return
+			return err
 		}
 		var base Base
 		json.Unmarshal(msg, &base)
@@ -92,9 +91,14 @@ func (ros *Ros) RunForever() {
 		case "unsubscribe":
 		default:
 		}
+		return nil
 	}
 	for {
-		recv()
+		err := recv()
+		if err != nil {
+			fmt.Printf("RunForever: error %v\n", err)
+			break
+		}
 	}
 }
 

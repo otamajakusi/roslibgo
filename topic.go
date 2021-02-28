@@ -9,7 +9,26 @@ type Topic struct {
 	ros          *Ros
 	name         string
 	messageType  string
-	isAdvertized bool
+	isAdvertised bool
+}
+
+// https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#341-advertise--advertise-
+const AdvertiseOp = "advertise"
+
+type AdvertiseMessage struct {
+	Op    string `json:"op"`
+	Id    string `json:"id,omitempty"`
+	Topic string `json:"topic"`
+	Type  string `json:"type"`
+}
+
+// https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#342-unadvertise--unadvertise-
+const UnadvertiseOp = "unadvertise"
+
+type UnadvertiseMessage struct {
+	Op    string `json:"op"`
+	Id    string `json:"id,omitempty"`
+	Topic string `json:"topic"`
 }
 
 // https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#343-publish--publish-
@@ -48,16 +67,19 @@ type UnsubscribeMessage struct {
 type TopicCallback func(json.RawMessage)
 
 func NewTopic(ros *Ros, name string, messageType string) *Topic {
-	topic := Topic{ros: ros, name: name, messageType: messageType, isAdvertized: false}
+	topic := Topic{ros: ros, name: name, messageType: messageType, isAdvertised: false}
 	return &topic
 }
 
 func (topic *Topic) Publish(data json.RawMessage) error {
+	err := topic.Advertise()
+	if err != nil {
+		return err
+	}
 	ros := topic.ros
 	id := fmt.Sprintf("%s:%s:%d", PublishOp, topic.name, ros.incCounter())
 	msg := PublishMessage{Op: "publish", Id: id, Topic: topic.name, Msg: data}
-	err := ros.ws.writeJSON(msg)
-	return err
+	return ros.ws.writeJSON(msg)
 }
 
 func (topic *Topic) Subscribe(callback TopicCallback) error {
@@ -77,16 +99,43 @@ func (topic *Topic) Subscribe(callback TopicCallback) error {
 }
 
 func (topic *Topic) Unsubscribe() error {
-	ros := topic.ros
-	id := fmt.Sprintf("%s:%s:%d", UnsubscribeOp, topic.name, ros.incCounter())
+	id := fmt.Sprintf("%s:%s:%d", UnsubscribeOp, topic.name, topic.ros.incCounter())
 	msg := SubscribeMessage{Op: UnsubscribeOp, Id: id, Topic: topic.name}
-	err := ros.ws.writeJSON(msg)
-	return err
+	return topic.ros.ws.writeJSON(msg)
 }
 
 func (topic *Topic) subscribe() error {
-	ros := topic.ros
-	id := fmt.Sprintf("%s:%s:%d", SubscribeOp, topic.name, ros.incCounter())
+	id := fmt.Sprintf("%s:%s:%d", SubscribeOp, topic.name, topic.ros.incCounter())
 	msg := SubscribeMessage{Op: SubscribeOp, Id: id, Topic: topic.name, Type: topic.messageType}
-	return ros.ws.writeJSON(msg)
+	err := topic.ros.ws.writeJSON(msg)
+	if err != nil {
+		topic.isAdvertised = true
+	}
+	return err
+}
+
+func (topic *Topic) Advertise() error {
+	if topic.isAdvertised {
+		return nil // do nothing
+	}
+	id := fmt.Sprintf("%s:%s:%d", AdvertiseOp, topic.name, topic.ros.incCounter())
+	msg := AdvertiseMessage{Op: AdvertiseOp, Id: id, Type: topic.messageType, Topic: topic.name}
+	err := topic.ros.ws.writeJSON(msg)
+	if err != nil {
+		topic.isAdvertised = true
+	}
+	return err
+}
+
+func (topic *Topic) Unadvertise() error {
+	if !topic.isAdvertised {
+		return nil // do nothing
+	}
+	id := fmt.Sprintf("%s:%s:%d", UnadvertiseOp, topic.name, topic.ros.incCounter())
+	msg := UnadvertiseMessage{Op: UnadvertiseOp, Id: id, Topic: topic.name}
+	err := topic.ros.ws.writeJSON(msg)
+	if err != nil {
+		topic.isAdvertised = false
+	}
+	return err
 }
