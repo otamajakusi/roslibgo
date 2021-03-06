@@ -1,9 +1,9 @@
 package main
 
 import (
-	"../../roslibgo"
 	"encoding/json"
 	"fmt"
+	"github.com/otamajakusi/roslibgo"
 	//"github.com/pkg/profile"
 	"sync"
 	"time"

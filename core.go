@@ -3,7 +3,7 @@ package roslibgo
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
+	"github.com/otamajakusi/recws"
 	// "golang.org/x/net/websocket"
 	"sync"
 )
@@ -14,7 +14,7 @@ type RosMessage struct {
 }
 
 type RosWs struct {
-	ws    *websocket.Conn
+	ws    *recws.RecConn
 	mutex sync.Mutex
 }
 
@@ -32,31 +32,19 @@ type Base struct {
 }
 
 func (rosWs *RosWs) readMessage() ([]byte, error) {
-	// [gorilla websocket]
 	_, msg, err := rosWs.ws.ReadMessage()
-	// [x/net/websocket]
-	// var msg []byte
-	// err := websocket.Message.Receive(rosWs.ws, &msg)
 	return msg, err
 }
 
 func (rosWs *RosWs) writeJSON(msg interface{}) error {
-	rosWs.mutex.Lock()
-	// [gorilla websocket]
 	err := rosWs.ws.WriteJSON(msg)
-	// [x/net/websocket]
-	// err := websocket.JSON.Send(rosWs.ws, msg)
-	rosWs.mutex.Unlock()
 	return err
 }
 
 func NewRos(url string) (*Ros, error) {
 	ros := Ros{url: url, ws: RosWs{ws: nil}}
 	ros.message.message = make(map[string]chan interface{})
-	ws, err := ros.connect()
-	if err != nil {
-		return nil, fmt.Errorf("NewRos: %v", err)
-	}
+	ws := ros.connect()
 	ros.ws.ws = ws
 	return &ros, nil
 }
@@ -69,6 +57,7 @@ func (ros *Ros) RunForever() {
 	recv := func() error {
 		msg, err := ros.ws.readMessage()
 		if err != nil {
+			fmt.Printf("readMessage: %v\n", err)
 			return err
 		}
 		var base Base
@@ -102,17 +91,14 @@ func (ros *Ros) RunForever() {
 	}
 }
 
-func (ros *Ros) connect() (*websocket.Conn, error) {
+func (ros *Ros) connect() *recws.RecConn {
 	ws := ros.ws.ws
 	if ws != nil {
-		return ws, nil
+		return ws
 	}
-	// [gorilla websocket]
-	dialer := websocket.Dialer{}
-	ws, _, err := dialer.Dial(ros.url, nil)
-	// [x/net/websocket]
-	// ws, err := websocket.Dial(ros.url, "", "https://localhost")
-	return ws, err
+	ws = &recws.RecConn{RecIntvlMin: 1, RecIntvlMax: 1} // TODO: should be configurable
+	ws.Dial(ros.url, nil)
+	return ws
 }
 
 func (ros *Ros) incCounter() int {
@@ -132,7 +118,7 @@ func (ros *Ros) createMessage(op string, name string) {
 
 func (ros *Ros) destroyMessage(op string, name string) {
 	ros.message.mutex.Lock()
-	ros.message.message[op+":"+name] = nil
+	close(ros.message.message[op+":"+name])
 	ros.message.mutex.Unlock()
 }
 
