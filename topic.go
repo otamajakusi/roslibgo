@@ -117,7 +117,7 @@ func (topic *Topic) Advertise() error {
 	id := fmt.Sprintf("%s:%s:%d", AdvertiseOp, topic.name, topic.ros.incCounter())
 	msg := AdvertiseMessage{Op: AdvertiseOp, Id: id, Type: topic.messageType, Topic: topic.name}
 	err := topic.writeJSON(msg)
-	if err != nil {
+	if err == nil {
 		topic.isAdvertised = true
 	}
 	return err
