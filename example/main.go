@@ -80,7 +80,7 @@ func main() {
 				s, _ := json.Marshal(StdMsgs_String{Data: fmt.Sprintf("%s: %d", str, i)})
 				pub.Publish(json.RawMessage(s))
 				//_, _ = pub, s
-				time.Sleep(1 * time.Millisecond)
+				time.Sleep(1 * time.Second)
 			}
 			wg.Done()
 		}

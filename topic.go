@@ -79,7 +79,7 @@ func (topic *Topic) Publish(data json.RawMessage) error {
 	ros := topic.ros
 	id := fmt.Sprintf("%s:%s:%d", PublishOp, topic.name, ros.incCounter())
 	msg := PublishMessage{Op: "publish", Id: id, Topic: topic.name, Msg: data}
-	return ros.ws.writeJSON(msg)
+	return topic.writeJSON(msg)
 }
 
 func (topic *Topic) Subscribe(callback TopicCallback) error {
@@ -101,17 +101,13 @@ func (topic *Topic) Subscribe(callback TopicCallback) error {
 func (topic *Topic) Unsubscribe() error {
 	id := fmt.Sprintf("%s:%s:%d", UnsubscribeOp, topic.name, topic.ros.incCounter())
 	msg := SubscribeMessage{Op: UnsubscribeOp, Id: id, Topic: topic.name}
-	return topic.ros.ws.writeJSON(msg)
+	return topic.writeJSON(msg)
 }
 
 func (topic *Topic) subscribe() error {
 	id := fmt.Sprintf("%s:%s:%d", SubscribeOp, topic.name, topic.ros.incCounter())
 	msg := SubscribeMessage{Op: SubscribeOp, Id: id, Topic: topic.name, Type: topic.messageType}
-	err := topic.ros.ws.writeJSON(msg)
-	if err != nil {
-		topic.isAdvertised = true
-	}
-	return err
+	return topic.writeJSON(msg)
 }
 
 func (topic *Topic) Advertise() error {
@@ -120,7 +116,7 @@ func (topic *Topic) Advertise() error {
 	}
 	id := fmt.Sprintf("%s:%s:%d", AdvertiseOp, topic.name, topic.ros.incCounter())
 	msg := AdvertiseMessage{Op: AdvertiseOp, Id: id, Type: topic.messageType, Topic: topic.name}
-	err := topic.ros.ws.writeJSON(msg)
+	err := topic.writeJSON(msg)
 	if err != nil {
 		topic.isAdvertised = true
 	}
@@ -133,8 +129,14 @@ func (topic *Topic) Unadvertise() error {
 	}
 	id := fmt.Sprintf("%s:%s:%d", UnadvertiseOp, topic.name, topic.ros.incCounter())
 	msg := UnadvertiseMessage{Op: UnadvertiseOp, Id: id, Topic: topic.name}
+	err := topic.writeJSON(msg)
+	topic.isAdvertised = false
+	return err
+}
+
+func (topic *Topic) writeJSON(msg interface{}) error {
 	err := topic.ros.ws.writeJSON(msg)
-	if err != nil {
+	if err != nil && err.Error() == ErrNotConnected.Error() {
 		topic.isAdvertised = false
 	}
 	return err

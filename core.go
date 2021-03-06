@@ -6,7 +6,10 @@ import (
 	"github.com/otamajakusi/recws"
 	// "golang.org/x/net/websocket"
 	"sync"
+	"time"
 )
+
+var ErrNotConnected = recws.ErrNotConnected
 
 type RosMessage struct {
 	message map[string]chan interface{}
@@ -38,6 +41,9 @@ func (rosWs *RosWs) readMessage() ([]byte, error) {
 
 func (rosWs *RosWs) writeJSON(msg interface{}) error {
 	err := rosWs.ws.WriteJSON(msg)
+	if err != nil {
+		fmt.Printf("writeJson %v\n", err)
+	}
 	return err
 }
 
@@ -57,12 +63,11 @@ func (ros *Ros) RunForever() {
 	recv := func() error {
 		msg, err := ros.ws.readMessage()
 		if err != nil {
-			fmt.Printf("readMessage: %v\n", err)
 			return err
 		}
 		var base Base
 		json.Unmarshal(msg, &base)
-		//fmt.Println(string(msg))
+		fmt.Println(string(msg))
 		switch base.Op {
 		case "publish":
 			var message PublishMessage
@@ -86,7 +91,7 @@ func (ros *Ros) RunForever() {
 		err := recv()
 		if err != nil {
 			fmt.Printf("RunForever: error %v\n", err)
-			break
+			time.Sleep(time.Second * 1) // TODO: should be configurable
 		}
 	}
 }
@@ -96,7 +101,7 @@ func (ros *Ros) connect() *recws.RecConn {
 	if ws != nil {
 		return ws
 	}
-	ws = &recws.RecConn{RecIntvlMin: 1, RecIntvlMax: 1} // TODO: should be configurable
+	ws = &recws.RecConn{RecIntvlMin: 1, RecIntvlMax: 2, NonVerbose: true} // TODO: should be configurable
 	ws.Dial(ros.url, nil)
 	return ws
 }
