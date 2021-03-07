@@ -6,7 +6,7 @@ roslibgo is the client library to connect [rosbridge](http://wiki.ros.org/rosbri
 - Topic subscribing
 - Service call (client)
 - Service advertisement (server)
-- reconnecting to ROS Bridge when connection is closed. (NOT YET)
+- reconnecting to ROS Bridge when connection is closed.
 - support concurrent programming
 
 # Installation
