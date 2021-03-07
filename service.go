@@ -67,7 +67,8 @@ func (service *Service) Call(request json.RawMessage) (json.RawMessage, error) {
 	ros := service.ros
 	ros.createMessage(ServiceResponseOp, service.name)
 	defer ros.destroyMessage(ServiceResponseOp, service.name)
-	return ros.retrieveMessage(ServiceResponseOp, service.name).(*ServiceResponse).Values, nil
+	v, _ := ros.retrieveMessage(ServiceResponseOp, service.name)
+	return v.(*ServiceResponse).Values, nil
 }
 
 func (service *Service) Advertise(callback ServiceCallback) error {
@@ -82,7 +83,7 @@ func (service *Service) Advertise(callback ServiceCallback) error {
 		defer ros.destroyMessage(ServiceCallOp, service.name)
 
 		for {
-			srvCall := ros.retrieveMessage(ServiceCallOp, service.name)
+			srvCall, _ := ros.retrieveMessage(ServiceCallOp, service.name)
 			result, values := callback(srvCall.(*ServiceCall).Args)
 			id := srvCall.(*ServiceCall).Id
 			srvResp := ServiceResponse{Op: ServiceResponseOp, Id: id, Service: service.name, Values: values, Result: result}

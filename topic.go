@@ -3,13 +3,16 @@ package roslibgo
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 type Topic struct {
-	ros          *Ros
-	name         string
-	messageType  string
-	isAdvertised bool
+	ros           *Ros
+	name          string
+	messageType   string
+	isAdvertised  bool // should be lock before access
+	isSubscribing bool // should be lock before access
+	mutex         sync.Mutex
 }
 
 // https://github.com/biobotus/rosbridge_suite/blob/master/ROSBRIDGE_PROTOCOL.md#341-advertise--advertise-
@@ -68,6 +71,7 @@ type TopicCallback func(json.RawMessage)
 
 func NewTopic(ros *Ros, name string, messageType string) *Topic {
 	topic := Topic{ros: ros, name: name, messageType: messageType, isAdvertised: false}
+	ros.registerOnConnected(fmt.Sprintf("%p", &topic), topic.onConnected)
 	return &topic
 }
 
@@ -79,7 +83,7 @@ func (topic *Topic) Publish(data json.RawMessage) error {
 	ros := topic.ros
 	id := fmt.Sprintf("%s:%s:%d", PublishOp, topic.name, ros.incCounter())
 	msg := PublishMessage{Op: "publish", Id: id, Topic: topic.name, Msg: data}
-	return topic.writeJSON(msg)
+	return ros.ws.writeJSON(msg)
 }
 
 func (topic *Topic) Subscribe(callback TopicCallback) error {
@@ -92,7 +96,13 @@ func (topic *Topic) Subscribe(callback TopicCallback) error {
 		ros.createMessage(PublishOp, topic.name)
 		defer ros.destroyMessage(PublishOp, topic.name)
 		for {
-			callback((ros.retrieveMessage(PublishOp, topic.name)).(*PublishMessage).Msg)
+			v, ok := ros.retrieveMessage(PublishOp, topic.name)
+			if !ok {
+				topic.subscribe()
+				ros.createMessage(PublishOp, topic.name)
+			} else {
+				callback((v).(*PublishMessage).Msg)
+			}
 		}
 	}()
 	return nil
@@ -101,13 +111,21 @@ func (topic *Topic) Subscribe(callback TopicCallback) error {
 func (topic *Topic) Unsubscribe() error {
 	id := fmt.Sprintf("%s:%s:%d", UnsubscribeOp, topic.name, topic.ros.incCounter())
 	msg := SubscribeMessage{Op: UnsubscribeOp, Id: id, Topic: topic.name}
-	return topic.writeJSON(msg)
+	err := topic.ros.ws.writeJSON(msg)
+	if err != nil {
+		topic.isSubscribing = false
+	}
+	return err
 }
 
 func (topic *Topic) subscribe() error {
 	id := fmt.Sprintf("%s:%s:%d", SubscribeOp, topic.name, topic.ros.incCounter())
 	msg := SubscribeMessage{Op: SubscribeOp, Id: id, Topic: topic.name, Type: topic.messageType}
-	return topic.writeJSON(msg)
+	err := topic.ros.ws.writeJSON(msg)
+	if err == nil {
+		topic.isSubscribing = true
+	}
+	return err
 }
 
 func (topic *Topic) Advertise() error {
@@ -116,7 +134,7 @@ func (topic *Topic) Advertise() error {
 	}
 	id := fmt.Sprintf("%s:%s:%d", AdvertiseOp, topic.name, topic.ros.incCounter())
 	msg := AdvertiseMessage{Op: AdvertiseOp, Id: id, Type: topic.messageType, Topic: topic.name}
-	err := topic.writeJSON(msg)
+	err := topic.ros.ws.writeJSON(msg)
 	if err == nil {
 		topic.isAdvertised = true
 	}
@@ -129,15 +147,19 @@ func (topic *Topic) Unadvertise() error {
 	}
 	id := fmt.Sprintf("%s:%s:%d", UnadvertiseOp, topic.name, topic.ros.incCounter())
 	msg := UnadvertiseMessage{Op: UnadvertiseOp, Id: id, Topic: topic.name}
-	err := topic.writeJSON(msg)
-	topic.isAdvertised = false
-	return err
-}
-
-func (topic *Topic) writeJSON(msg interface{}) error {
 	err := topic.ros.ws.writeJSON(msg)
-	if err != nil && err.Error() == ErrNotConnected.Error() {
+	if err == nil {
 		topic.isAdvertised = false
 	}
 	return err
+}
+
+func (topic *Topic) onConnected() {
+	if topic.isSubscribing {
+		// close subscribe chan if connection is (re)established.
+		topic.ros.destroyMessage(PublishOp, topic.name)
+	}
+	if topic.isAdvertised {
+		topic.isAdvertised = false
+	}
 }

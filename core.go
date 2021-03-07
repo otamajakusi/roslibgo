@@ -22,11 +22,12 @@ type RosWs struct {
 }
 
 type Ros struct {
-	url     string
-	ws      RosWs
-	counter int
-	mutex   sync.Mutex
-	message RosMessage
+	url         string
+	ws          RosWs
+	counter     int
+	mutex       sync.Mutex
+	message     RosMessage
+	onConnected map[string]func()
 }
 
 type Base struct {
@@ -50,6 +51,7 @@ func (rosWs *RosWs) writeJSON(msg interface{}) error {
 func NewRos(url string) (*Ros, error) {
 	ros := Ros{url: url, ws: RosWs{ws: nil}}
 	ros.message.message = make(map[string]chan interface{})
+	ros.onConnected = make(map[string]func())
 	ws := ros.connect()
 	ros.ws.ws = ws
 	return &ros, nil
@@ -96,12 +98,18 @@ func (ros *Ros) RunForever() {
 	}
 }
 
+func (ros *Ros) registerOnConnected(key string, onConnect func()) {
+	ros.mutex.Lock()
+	ros.onConnected[key] = onConnect
+	ros.mutex.Unlock()
+}
+
 func (ros *Ros) connect() *recws.RecConn {
 	ws := ros.ws.ws
 	if ws != nil {
 		return ws
 	}
-	ws = &recws.RecConn{RecIntvlMin: 1, RecIntvlMax: 2, NonVerbose: true} // TODO: should be configurable
+	ws = &recws.RecConn{RecIntvlMin: 1, RecIntvlMax: 2, NonVerbose: true, SubscribeHandler: ros.onConnect} // TODO: should be configurable
 	ws.Dial(ros.url, nil)
 	return ws
 }
@@ -112,6 +120,16 @@ func (ros *Ros) incCounter() int {
 	ros.counter++
 	ros.mutex.Unlock()
 	return counter
+}
+
+func (ros *Ros) onConnect() error {
+	fmt.Println("connected")
+	ros.mutex.Lock()
+	for _, v := range ros.onConnected {
+		v()
+	}
+	ros.mutex.Unlock()
+	return nil
 }
 
 func (ros *Ros) createMessage(op string, name string) {
@@ -133,6 +151,7 @@ func (ros *Ros) storeMessage(op string, name string, value interface{}) {
 	ros.message.mutex.Unlock()
 }
 
-func (ros *Ros) retrieveMessage(op string, name string) interface{} {
-	return <-ros.message.message[op+":"+name]
+func (ros *Ros) retrieveMessage(op string, name string) (interface{}, bool) {
+	v, ok := <-ros.message.message[op+":"+name]
+	return v, ok
 }
