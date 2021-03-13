@@ -19,5 +19,5 @@ jobs:
           required-ros-distributions: melodic
 
       - name: test
-        run: |
-          go test -v
+        run: source /opt/ros/melodic/setup.bash && go test -v
+          
