@@ -1,3 +1,5 @@
+[![test](https://github.com/otamajakusi/roslibgo/actions/workflows/test.yaml/badge.svg)](https://github.com/otamajakusi/roslibgo/actions/workflows/test.yaml)
+
 # roslibgo: ROS bridge client library with Go
 roslibgo is the client library to connect [rosbridge](http://wiki.ros.org/rosbridge_suite) with Go-language.
 
