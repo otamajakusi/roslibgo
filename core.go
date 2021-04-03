@@ -69,7 +69,6 @@ func (ros *Ros) RunForever() {
 		}
 		var base Base
 		json.Unmarshal(msg, &base)
-		fmt.Println(string(msg))
 		switch base.Op {
 		case "publish":
 			var message PublishMessage
@@ -123,7 +122,6 @@ func (ros *Ros) incCounter() int {
 }
 
 func (ros *Ros) onConnect() error {
-	fmt.Println("connected")
 	ros.mutex.Lock()
 	for _, v := range ros.onConnected {
 		v()
